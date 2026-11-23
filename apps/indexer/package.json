@@ -11,7 +11,8 @@
     "start": "node dist/index.js",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit -p tsconfig.test.json",
-    "test": "vitest run"
+    "test": "vitest run",
+    "redecode": "tsx scripts/redecode.ts"
   },
   "dependencies": {
     "@stellar/stellar-sdk": "^17.0.1",
@@ -19,7 +20,8 @@
     "@stellarlens/decode": "workspace:*",
     "@stellarlens/sdk": "workspace:*",
     "dotenv": "^17.4.2",
-    "drizzle-orm": "^0.45.2"
+    "drizzle-orm": "^0.45.2",
+    "undici": "^6.29.1"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

@@ -1,5 +1,5 @@
 import request from "supertest";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createApiKey } from "./helpers";
 import { getApp, getTestDb } from "./setup";
 
@@ -34,7 +34,51 @@ describe("api keys (e2e)", () => {
     for (const row of response.body) {
       expect(row.keyHash).toBeUndefined();
       expect(row.key).toBeUndefined();
+      expect(row).toHaveProperty("expiresAt");
+      expect(row.expiresAt === null || typeof row.expiresAt === "string").toBe(true);
     }
+  });
+
+  it("returns expiresAt in the list, round-tripping the value given at creation", async () => {
+    const futureExpiry = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const createResponse = await request(getApp().getHttpServer())
+      .post("/api-keys")
+      .set("x-api-key", apiKey)
+      .send({ name: "expiring-key", expiresAt: futureExpiry });
+    expect(createResponse.status).toBe(201);
+    const { id } = createResponse.body;
+
+    const listResponse = await request(getApp().getHttpServer()).get("/api-keys").set("x-api-key", apiKey);
+    expect(listResponse.status).toBe(200);
+    const row = listResponse.body.find((entry: { id: number }) => entry.id === id);
+    expect(row).toBeDefined();
+    expect(row).toHaveProperty("expiresAt");
+    expect(row.expiresAt).not.toBeNull();
+    expect(new Date(row.expiresAt).toISOString()).toBe(futureExpiry);
+  });
+
+  it("records lastUsedAt after a key successfully authenticates", async () => {
+    const createResponse = await request(getApp().getHttpServer())
+      .post("/api-keys")
+      .set("x-api-key", apiKey)
+      .send({ name: "tracked-key" });
+    const { id, key: trackedRawKey } = createResponse.body;
+
+    const findTracked = async () => {
+      const response = await request(getApp().getHttpServer())
+        .get("/api-keys")
+        .set("x-api-key", apiKey);
+      return response.body.find((row: { id: number }) => row.id === id);
+    };
+
+    expect((await findTracked()).lastUsedAt).toBeNull();
+
+    await request(getApp().getHttpServer()).get("/contracts").set("x-api-key", trackedRawKey);
+
+    // the guard writes lastUsedAt fire-and-forget, so poll briefly rather than assert immediately
+    await vi.waitFor(async () => {
+      expect((await findTracked()).lastUsedAt).not.toBeNull();
+    });
   });
 
   it("revokes a key, after which it can no longer authenticate", async () => {
